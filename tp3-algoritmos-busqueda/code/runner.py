@@ -24,14 +24,20 @@ class EpisodeRunner:
             step += 1
 
             if verbose:
-                print(f"Paso {step} | Accion: {action} | Nuevo estado: {next_state} | Recompensa: {reward}")
+                print(
+                    f"Paso {step} | Accion: {action} | Nuevo estado: {next_state} | Recompensa: {reward}"
+                )
                 if reward == 1.0:
                     print(f"¿Gano? (encontro el objetivo): {done}")
                 else:
                     print(f"¿Gano? (encontro el objetivo): False")
                     print(f"¿Perdio? (se cayo): {done}")
-                    print(f"¿Freno? (alcanzo el maximo de pasos posible): {truncated}\n")
+                    print(
+                        f"¿Freno? (alcanzo el maximo de pasos posible): {truncated}\n"
+                    )
 
             state = next_state
 
-        return reward, done, truncated
+        # Devolvemos también el número de pasos para facilitar el registro de
+        # estadísticas en experimentos repetidos.
+        return reward, done, truncated, step

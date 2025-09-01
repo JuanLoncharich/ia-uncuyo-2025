@@ -14,9 +14,9 @@ class BasePlannerAgent:
         self.ptr: int = 0
         self._env = None  # para fallback
 
-    def reset(self, env) -> None:
+    def reset(self, env, action_costs=None) -> None:
         self._env = env
-        planner = GridPlanner(env.unwrapped.desc)
+        planner = GridPlanner(env.unwrapped.desc, action_costs=action_costs)
         self.plan = self._build_plan(planner)
         self.ptr = 0
 

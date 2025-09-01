@@ -7,6 +7,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 # Acciones: 0=LEFT, 1=DOWN, 2=RIGHT, 3=UP
 ACTION_FROM_DELTA = {(0, -1): 0, (1, 0): 1, (0, 1): 2, (-1, 0): 3}
 DELTAS = [(0, -1), (1, 0), (0, 1), (-1, 0)]
+DEFAULT_ACTION_COSTS = {delta: 1 for delta in DELTAS}
 
 Coord = Tuple[int, int]
 
@@ -17,8 +18,9 @@ class GridPlanner:
     Expone: parseo, vecinos, y búsquedas clásicas (BFS, DFS, DLS, UCS, A*).
     """
 
-    def __init__(self, desc):
+    def __init__(self, desc, action_costs: Optional[Dict[Tuple[int, int], int]] = None):
         self.grid, self.n, self.start, self.goal = self._parse_desc(desc)
+        self.action_costs = action_costs or DEFAULT_ACTION_COSTS
 
     @staticmethod
     def _parse_desc(desc) -> Tuple[List[str], int, Coord, Coord]:
@@ -58,6 +60,9 @@ class GridPlanner:
             cur = prev
         actions.reverse()
         return actions
+
+    def step_cost(self, delta: Tuple[int, int]) -> int:
+        return self.action_costs.get(delta, 1)
 
     # --------------------- Búsquedas no informadas ---------------------
 
@@ -129,7 +134,8 @@ class GridPlanner:
             if u == self.goal:
                 return self.reconstruct_actions(parents, self.start, self.goal)
             for v, delta in self.neighbors(u):
-                new_cost = cost + 1
+                step_c = self.step_cost(delta)
+                new_cost = cost + step_c
                 if v not in g or new_cost < g[v]:
                     g[v] = new_cost
                     parents[v] = (u, delta)
@@ -138,10 +144,11 @@ class GridPlanner:
 
     # --------------------- A* ---------------------
 
-    @staticmethod
-    def manhattan(a: Coord, b: Coord) -> int:
-        """Heurística admisible y consistente en grid 4-conexo con costos unitarios."""
-        return abs(a[0] - b[0]) + abs(a[1] - b[1])
+    def manhattan(self, a: Coord, b: Coord) -> int:
+        """Heurística admisible para costos diferenciados por eje."""
+        vert = min(self.action_costs.get((1, 0), 1), self.action_costs.get((-1, 0), 1))
+        hor = min(self.action_costs.get((0, 1), 1), self.action_costs.get((0, -1), 1))
+        return abs(a[0] - b[0]) * vert + abs(a[1] - b[1]) * hor
 
     def astar(self, heuristic=None) -> Optional[List[int]]:
         if heuristic is None:
@@ -162,7 +169,8 @@ class GridPlanner:
             if u == self.goal:
                 return self.reconstruct_actions(parents, self.start, self.goal)
             for v, delta in self.neighbors(u):
-                tentative_g = g[u] + 1
+                step_c = self.step_cost(delta)
+                tentative_g = g[u] + step_c
                 if v not in g or tentative_g < g[v]:
                     g[v] = tentative_g
                     parents[v] = (u, delta)

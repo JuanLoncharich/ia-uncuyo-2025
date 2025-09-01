@@ -9,6 +9,7 @@ from agent_dfs import DFSAgent
 from agent_dls import DLSAgent
 from agent_ucs import UCSAgent
 from agent_astar import AStarAgent
+from agent_random import RandomAgent
 
 # Tu función ya existente:
 def generate_large_custom_map(size=8, p_frozen=0.9, seed=None):
@@ -30,59 +31,140 @@ def generate_large_custom_map(size=8, p_frozen=0.9, seed=None):
     grid[mask_frozen] = 'F'
 
     # Colocar Start (S) y Goal (G) en esquinas opuestas
-    grid[0, 0] = 'S'
-    grid[size-1, size-1] = 'G'
+    # Elegir posiciones aleatorias para S y G, asegurando que sean distintas
+    start_pos = tuple(np.random.choice(size, 2, replace=False))
+    goal_pos = tuple(np.random.choice(size, 2, replace=False))
+    while goal_pos == start_pos:
+        goal_pos = tuple(np.random.choice(size, 2, replace=False))
+    grid[start_pos] = 'S'
+    grid[goal_pos] = 'G'
 
     # Convertir a lista de strings
     desc = [''.join(row) for row in grid]
     return desc
 
 if __name__ == "__main__":
-    # Mapa determinista grande
-    desc = generate_large_custom_map(size=100, p_frozen=0.92, seed=123)
-
-    env = gym.make("FrozenLake-v1", desc=desc, is_slippery=False).env
-    env = gym.wrappers.TimeLimit(env, max_episode_steps=2000)
-
-    runner = EpisodeRunner(env)
-    agents = [
-        ("BFS (Anchura)", BFSAgent()),
-        ("DFS (Profundidad)", DFSAgent()),
-        ("DLS 50", DLSAgent(limit=50)),
-        ("DLS 75", DLSAgent(limit=75)),
-        ("DLS 100", DLSAgent(limit=100)),
-        ("UCS (Costo Uniforme)", UCSAgent()),
-        ("A* (Manhattan)", AStarAgent()),
-    ]
-
     EPISODES = 30
+    SIZE = 100
+    P_FROZEN = 0.92
+    MAX_STEPS = 1000  # Vida del agente
+
+    # Función de costo del escenario 2 (para evaluar costo de acciones)
+    def step_cost_s2_from_action(a: int) -> int:
+        # LEFT/RIGHT => 1, UP/DOWN => 10
+        return 10 if a in (1, 3) else 1
+
+    SEEDS = [i for i in range(1, EPISODES + 1)]
+
     results = []
 
-    for name, agent in agents:
-        for episode in range(1, EPISODES + 1):
-            reward, done, truncated, steps = runner.run(agent, verbose=False)
+    import time
+
+    for ep_idx, seed in enumerate(SEEDS, start=1):
+        # Generar mapa determinista para esta semilla
+        desc = generate_large_custom_map(size=SIZE, p_frozen=P_FROZEN, seed=seed)
+
+        # Imprimir entorno generado una vez (env 1)
+        if ep_idx == 1:
+            print("Entorno generado (S=Start, G=Goal, F=Frozen, H=Hole):")
+            for row in desc:
+                print(row)
+
+        # Entorno determinista con límite de pasos
+        env = gym.make("FrozenLake-v1", desc=desc, is_slippery=False).env
+        env = gym.wrappers.TimeLimit(env, max_episode_steps=MAX_STEPS)
+        runner = EpisodeRunner(env)
+        # Planificador auxiliar para métricas por-entorno (Manhattan)
+        from grid_planner import GridPlanner
+        planner_env = GridPlanner(desc)
+        manhattan_dist = planner_env.manhattan(planner_env.start, planner_env.goal)
+
+        agents = [
+            ("Random", RandomAgent(seed=seed)),
+            ("BFS", BFSAgent()),
+            ("DFS", DFSAgent()),
+            ("DLS50", DLSAgent(limit=50)),
+            ("DLS75", DLSAgent(limit=75)),
+            ("DLS100", DLSAgent(limit=100)),
+            ("UCS", UCSAgent()),
+            ("A*", AStarAgent()),
+        ]
+
+        for name, agent in agents:
+            t0 = time.perf_counter()
+            reward, done, truncated, steps, actions_taken = runner.run(agent, verbose=False, seed=seed, name=name)
+            t1 = time.perf_counter()
+
+            # Métricas
+            solution_found = bool(done and reward == 1.0)
+            actions_count = steps if solution_found else -1
+            actions_cost = (
+                sum(step_cost_s2_from_action(a) for a in actions_taken) if solution_found else -1
+            )
+            states_n = getattr(agent, "last_expanded", None)
+            states_n = int(states_n) if (states_n is not None and solution_found) else -1
+
+            # Monotone path check (only RIGHT or DOWN moves)
+            try:
+                plan_actions = list(getattr(agent, "plan", []) or [])
+            except Exception:
+                plan_actions = []
+            monotone_rd = (solution_found and len(plan_actions) == steps and all(a in (1, 2) for a in plan_actions))
+
+            # Para el primer entorno, imprimir la secuencia de estados completa (BFS si hay solución)
+            if ep_idx == 1 and name == "BFS" and solution_found:
+                # Reconstruir trayectoria de estados desde acciones
+                # Usamos GridPlanner para conocer coordenadas de inicio
+                from grid_planner import GridPlanner
+
+                planner = GridPlanner(desc)
+                state_seq = planner.states_from_actions(agent.plan or [])
+                print("\nSecuencia de estados (fila, columna) para BFS en env 1:")
+                for s in state_seq:
+                    print(s)
+
             results.append(
                 {
-                    "algorithm": name,
-                    "episode": episode,
-                    "reward": reward,
-                    "done": done,
-                    "truncated": truncated,
-                    "steps": steps,
+                    "algorithm_name": name,
+                    "env_n": ep_idx,
+                    "seed": seed,
+                    "manhattan": int(manhattan_dist),
+                    "monotone_rd": bool(monotone_rd),
+                    "states_n": states_n,
+                    "actions_count": actions_count,
+                    "actions_cost": actions_cost,
+                    "time": t1 - t0,
+                    "solution_found": solution_found,
                 }
             )
 
-    with open("results.csv", "w", newline="") as f:
+    # Volcar resultados con el formato requerido en la carpeta del TP
+    import os
+    here = os.path.dirname(__file__)
+    out_csv = os.path.abspath(os.path.join(here, os.pardir, "results.csv"))
+    with open(out_csv, "w", newline="") as f:
         writer = csv.DictWriter(
-            f, fieldnames=["algorithm", "episode", "reward", "done", "truncated", "steps"]
+            f,
+            fieldnames=[
+                "algorithm_name",
+                "env_n",
+                "seed",
+                "manhattan",
+                "monotone_rd",
+                "states_n",
+                "actions_count",
+                "actions_cost",
+                "time",
+                "solution_found",
+            ],
         )
         writer.writeheader()
         writer.writerows(results)
 
-    # Mostrar un resumen simple en consola
-    for name, _ in agents:
-        alg_results = [r for r in results if r["algorithm"] == name]
-        wins = [r for r in alg_results if r["done"]]
-        win_rate = len(wins) / EPISODES
-        avg_steps = sum(r["steps"] for r in wins) / len(wins) if wins else float("nan")
-        print(f"{name}: tasa de victoria {win_rate:.2%}, pasos promedio {avg_steps:.1f}")
+    # Resumen simple en consola
+    print("\nResumen (soluciones encontradas por algoritmo):")
+    algos = sorted({r["algorithm_name"] for r in results})
+    for alg in algos:
+        rows = [r for r in results if r["algorithm_name"] == alg]
+        solved = sum(1 for r in rows if r["solution_found"])
+        print(f"{alg}: {solved}/{EPISODES} soluciones")

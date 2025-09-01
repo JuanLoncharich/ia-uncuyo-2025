@@ -13,12 +13,15 @@ class BasePlannerAgent:
         self.plan: Optional[List[int]] = None
         self.ptr: int = 0
         self._env = None  # para fallback
+        self.last_expanded: Optional[int] = None
 
     def reset(self, env) -> None:
         self._env = env
         planner = GridPlanner(env.unwrapped.desc)
         self.plan = self._build_plan(planner)
         self.ptr = 0
+        # Guardar métrica de estados expandidos si el planificador la expuso
+        self.last_expanded = getattr(planner, "last_expanded", None)
 
     def act(self, obs) -> int:
         if not self.plan:

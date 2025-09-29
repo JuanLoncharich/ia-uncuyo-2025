@@ -1,0 +1,20 @@
+{
+  "algorithm_name": "random",
+  "env_n": 1,
+  "size": 10,
+  "best_solution": [
+    6,
+    9,
+    5,
+    1,
+    8,
+    4,
+    7,
+    9,
+    3,
+    2
+  ],
+  "H": 2,
+  "states": 40001,
+  "time": 0.263886114997149
+}

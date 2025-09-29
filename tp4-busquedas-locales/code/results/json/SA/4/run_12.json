@@ -1,0 +1,14 @@
+{
+  "algorithm_name": "SA",
+  "env_n": 12,
+  "size": 4,
+  "best_solution": [
+    2,
+    0,
+    3,
+    1
+  ],
+  "H": 0,
+  "states": 79,
+  "time": 0.00013947700062999502
+}

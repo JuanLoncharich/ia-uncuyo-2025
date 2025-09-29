@@ -1,0 +1,14 @@
+{
+  "algorithm_name": "GA",
+  "env_n": 26,
+  "size": 4,
+  "best_solution": [
+    1,
+    3,
+    0,
+    2
+  ],
+  "H": 0,
+  "states": 113677,
+  "time": 0.1645030189974932
+}

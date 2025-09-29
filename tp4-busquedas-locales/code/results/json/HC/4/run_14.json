@@ -1,0 +1,14 @@
+{
+  "algorithm_name": "HC",
+  "env_n": 14,
+  "size": 4,
+  "best_solution": [
+    0,
+    2,
+    3,
+    1
+  ],
+  "H": 1,
+  "states": 15,
+  "time": 1.5109995729289949e-05
+}

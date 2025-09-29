@@ -41,42 +41,35 @@ class Board:
             print(' '.join(row))
         print()
 
-def simulated_annealing(board,T_init=None,T_min=1e-3,alpha=0.98,iters_per_T=None,max_iters=100000):
-    n = board.dimension
-    if T_init is None:
-        T_init = float(n)
-    if iters_per_T is None:
-        iters_per_T = n * n
-
+def simulated_annealing(board, T_init=100, T_min=0.01, alpha=0.95, max_iters=100000):
     current = board.queens[:]
     current_fit = board.fitness(current)
-
+    
     best = current[:]
     best_fit = current_fit
-
-    T = float(T_init)
-    iterations = 0
-
-    while T > T_min and iterations < max_iters and best_fit > 0:
-        for _ in range(iters_per_T):
-            iterations += 1
-            candidate, cand_fit = board.random_neighbour(current)
-
-            delta = cand_fit - current_fit
-
-            if delta <= 0:
-                current, current_fit = candidate, cand_fit
-                if cand_fit < best_fit:
-                    best, best_fit = candidate[:], cand_fit
-            else:
-                if random.random() < math.exp(-delta / T):
-                    current, current_fit = candidate, cand_fit
-
-            if iterations >= max_iters or best_fit == 0:
-                break
-
+    
+    T = T_init
+    
+    for _ in range(max_iters):
+        if best_fit == 0:
+            break
+            
+        candidate, cand_fit = board.random_neighbour(current)
+        delta = cand_fit - current_fit
+        
+        if delta <= 0 or random.random() < math.exp(-delta / T):
+            current = candidate
+            current_fit = cand_fit
+            
+            if cand_fit < best_fit:
+                best = candidate[:]
+                best_fit = cand_fit
+        
         T *= alpha
-
+        
+        if T < T_min:
+            break
+    
     return best, best_fit
 
 def main():
@@ -88,14 +81,7 @@ def main():
     board.print_board(board.queens)
     print("Initial fitness:", board.fitness(board.queens))
 
-    solution, fit = simulated_annealing(
-        board,
-        T_init=dim,
-        T_min=1e-3,
-        alpha=0.98,
-        iters_per_T=dim*dim,
-        max_iters=200000
-    )
+    solution, fit = simulated_annealing(board)
 
     board.queens = solution
 

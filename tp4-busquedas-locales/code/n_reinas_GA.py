@@ -4,7 +4,7 @@ class Board:
     def __init__(self, dimension):
         self.dimension = dimension
         self.queens = self.random_start()
-        self.best_ever = None  # Guardar la mejor solución encontrada
+        self.best_ever = None
         self.best_ever_fitness = float('inf')
 
     def random_start(self):
@@ -24,11 +24,15 @@ class Board:
         return threats
     
     def mutate(self, actual_board):
+        """
+        Mutación por swap de posiciones (mantiene permutación)
+        Intercambia las posiciones de dos reinas aleatorias
+        """
         n = self.dimension
         mutant = actual_board[:]
         i, j = random.sample(range(n), 2)
         mutant[i], mutant[j] = mutant[j], mutant[i]
-        return mutant, self.fitness(mutant)
+        return mutant
 
     def crossover(self, board1, board2):
         child1 = []
@@ -43,51 +47,68 @@ class Board:
         return child1, child2
 
     def genetic_algorithm(self, population_size=100, generations=1000):
-        # Inicializar población y evaluar
+        # Inicializar población
         population = [self.random_start() for _ in range(population_size)]
-        fitness_cache = {tuple(ind): self.fitness(ind) for ind in population}
+        
+        # Evaluar población inicial y crear pares (individuo, fitness)
+        pop_with_fitness = [(ind, self.fitness(ind)) for ind in population]
         
         # Guardar el mejor inicial
-        best_ind = min(population, key=lambda x: fitness_cache[tuple(x)])
-        self.best_ever = best_ind[:]
-        self.best_ever_fitness = fitness_cache[tuple(best_ind)]
+        pop_with_fitness.sort(key=lambda x: x[1])
+        self.best_ever = pop_with_fitness[0][0][:]
+        self.best_ever_fitness = pop_with_fitness[0][1]
         
         for gen in range(generations):
-            # Ordenar usando el cache (sin llamar a fitness extra)
-            population = sorted(population, key=lambda x: fitness_cache[tuple(x)])
+            # Ya tenemos la población ordenada por fitness
             
-            # Actualizar mejor global si hay mejora
-            if fitness_cache[tuple(population[0])] < self.best_ever_fitness:
-                self.best_ever = population[0][:]
-                self.best_ever_fitness = fitness_cache[tuple(population[0])]
+            # Actualizar mejor global
+            if pop_with_fitness[0][1] < self.best_ever_fitness:
+                self.best_ever = pop_with_fitness[0][0][:]
+                self.best_ever_fitness = pop_with_fitness[0][1]
             
             # Si encontramos solución óptima, terminar
             if self.best_ever_fitness == 0:
                 break
             
+            # Extraer solo los individuos (sin fitness) para trabajar
+            population = [ind for ind, fit in pop_with_fitness]
+            
             # Elitismo: mantener los 2 mejores
-            next_generation = population[:2]
+            next_generation = [population[0][:], population[1][:]]
             
             # Generar nueva población
             while len(next_generation) < population_size:
                 if random.random() < 0.3:
                     # Mutación
-                    mutant, mutant_fit = self.mutate(random.choice(population))
+                    parent = random.choice(population[:50])  # De los mejores 50
+                    mutant = self.mutate(parent)
                     next_generation.append(mutant)
-                    fitness_cache[tuple(mutant)] = mutant_fit
                 else:
                     # Crossover
-                    parent1, parent2 = random.choices(population[:20], k=2)
+                    parent1, parent2 = random.sample(population[:20], 2)
                     child1, child2 = self.crossover(parent1, parent2)
-                    next_generation.extend([child1, child2])
-                    # Evaluar hijos
-                    fitness_cache[tuple(child1)] = self.fitness(child1)
-                    fitness_cache[tuple(child2)] = self.fitness(child2)
+                    next_generation.append(child1)
+                    if len(next_generation) < population_size:
+                        next_generation.append(child2)
             
             # Truncar si nos pasamos
-            population = next_generation[:population_size]
+            next_generation = next_generation[:population_size]
+            
+            # Evaluar SOLO los nuevos individuos (todos menos los 2 elites)
+            # Los elites ya tienen su fitness conocido
+            pop_with_fitness = [
+                (next_generation[0], pop_with_fitness[0][1]),  # Elite 1
+                (next_generation[1], pop_with_fitness[1][1])   # Elite 2
+            ]
+            
+            # Evaluar el resto
+            for i in range(2, len(next_generation)):
+                fit = self.fitness(next_generation[i])
+                pop_with_fitness.append((next_generation[i], fit))
+            
+            # Ordenar para la siguiente generación
+            pop_with_fitness.sort(key=lambda x: x[1])
         
-        # Retornar la mejor solución encontrada en TODAS las generaciones
         return self.best_ever
     
     def print_board(self, queens):

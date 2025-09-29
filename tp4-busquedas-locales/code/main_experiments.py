@@ -110,11 +110,13 @@ def run_random(dim: int, env_n: int) -> RunRecord:
     board = rnd.Board(dimension=dim)
     max_evals = MAX_EVALUATIONS[dim]
     
+    best = list(board.queens)
+    best_H = None
+    
     with FitnessCounter(board, max_evals=max_evals) as fc:
         t0 = time.perf_counter()
-        best = list(board.queens)
-        best_H = board.fitness(best)
         try:
+            best_H = board.fitness(best)
             while True:
                 candidate = rnd.Board(dimension=dim).queens
                 cH = board.fitness(candidate)
@@ -123,7 +125,9 @@ def run_random(dim: int, env_n: int) -> RunRecord:
                     if best_H == 0:
                         break
         except BudgetExceeded:
-            pass
+            # Calcular fitness final sin incrementar contador
+            board.fitness = fc._orig
+            best_H = board.fitness(best)
         elapsed = time.perf_counter() - t0
     
     return RunRecord("random", env_n, dim, best, int(best_H), fc.counter, float(elapsed))
@@ -132,6 +136,9 @@ def run_hc(dim: int, env_n: int) -> RunRecord:
     random.seed(f"{dim}-{env_n}-HC")
     board = hc.Board(dimension=dim)
     max_evals = MAX_EVALUATIONS[dim]
+    
+    best = list(board.queens)
+    best_H = None
     
     with FitnessCounter(board, max_evals=max_evals) as fc:
         t0 = time.perf_counter()
@@ -148,6 +155,8 @@ def run_hc(dim: int, env_n: int) -> RunRecord:
             pass
         elapsed = time.perf_counter() - t0
         best = list(board.queens)
+        # Calcular fitness final sin incrementar contador
+        board.fitness = fc._orig
         best_H = board.fitness(best)
     
     return RunRecord("HC", env_n, dim, best, int(best_H), fc.counter, float(elapsed))
@@ -158,6 +167,9 @@ def run_sa(dim: int, env_n: int) -> RunRecord:
     params = SA_PARAMS(dim)
     max_evals = MAX_EVALUATIONS[dim]
     
+    solution = board.queens
+    best_H = None
+    
     with FitnessCounter(board, max_evals=max_evals) as fc:
         t0 = time.perf_counter()
         try:
@@ -166,15 +178,16 @@ def run_sa(dim: int, env_n: int) -> RunRecord:
                 T_init=params["T_init"],
                 T_min=params["T_min"],
                 alpha=params["alpha"],
-                iters_per_T=params["iters_per_T"],
                 max_iters=999999999  # Sin límite de iteraciones, solo por presupuesto
             )
+            best_H = fit
         except BudgetExceeded:
             solution = board.queens
-            fit = board.fitness(solution)
+            # Calcular fitness sin incrementar contador
+            board.fitness = fc._orig
+            best_H = board.fitness(solution)
         elapsed = time.perf_counter() - t0
         best = list(solution)
-        best_H = fit if fit is not None else board.fitness(best)
     
     return RunRecord("SA", env_n, dim, best, int(best_H), fc.counter, float(elapsed))
 
@@ -184,6 +197,10 @@ def run_ga(dim: int, env_n: int) -> RunRecord:
     params = GA_PARAMS(dim)
     max_evals = MAX_EVALUATIONS[dim]
     
+    # Inicializar variables por si se agota el presupuesto
+    solution = board.queens
+    best_H = None
+    
     with FitnessCounter(board, max_evals=max_evals) as fc:
         t0 = time.perf_counter()
         try:
@@ -191,12 +208,15 @@ def run_ga(dim: int, env_n: int) -> RunRecord:
                 population_size=params["population_size"],
                 generations=params["generations"],
             )
+            best_H = board.fitness(solution)
         except BudgetExceeded:
             # Devolver la mejor solución encontrada hasta ahora
             solution = board.queens
+            # Calcular fitness sin incrementar contador (restaurar método original temporalmente)
+            board.fitness = fc._orig
+            best_H = board.fitness(solution)
         elapsed = time.perf_counter() - t0
         best = list(solution)
-        best_H = board.fitness(best)
     
     return RunRecord("GA", env_n, dim, best, int(best_H), fc.counter, float(elapsed))
 

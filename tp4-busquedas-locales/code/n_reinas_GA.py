@@ -8,46 +8,107 @@ class Board:
         self.best_ever_fitness = float('inf')
 
     def random_start(self):
-        return [random.randint(0, self.dimension - 1) for _ in range(self.dimension)]
+        """Genera una permutación aleatoria - sin conflictos de columna"""
+        perm = list(range(self.dimension))
+        random.shuffle(perm)
+        return perm
 
     def fitness(self, queens):
         return self.get_threat(queens)
 
     def get_threat(self, queens):
+        """Solo cuenta conflictos diagonales (no hay conflictos de columna por construcción)"""
         threats = 0
         for i in range(self.dimension):
             for j in range(i + 1, self.dimension):
-                same_col = (queens[i] == queens[j])
-                same_diag = abs(queens[i] - queens[j]) == abs(i - j)
-                if same_col or same_diag:
+                # Solo verificar diagonales
+                if abs(queens[i] - queens[j]) == abs(i - j):
                     threats += 1
         return threats
     
     def mutate(self, actual_board):
         """
-        Mutación por swap de posiciones (mantiene permutación)
+        Mutación por swap - mantiene la permutación
         Intercambia las posiciones de dos reinas aleatorias
         """
-        n = self.dimension
         mutant = actual_board[:]
-        i, j = random.sample(range(n), 2)
+        i, j = random.sample(range(self.dimension), 2)
         mutant[i], mutant[j] = mutant[j], mutant[i]
         return mutant
 
-    def crossover(self, board1, board2):
-        child1 = []
-        child2 = []
-        for i in range(self.dimension):
-            if random.random() < 0.5:
-                child1.append(board1[i])
-                child2.append(board2[i])
-            else:
-                child1.append(board2[i])
-                child2.append(board1[i])
+    def crossover_pmx(self, parent1, parent2):
+        """
+        Partially Mapped Crossover (PMX) - preserva permutaciones
+        """
+        n = self.dimension
+        child1 = [-1] * n
+        child2 = [-1] * n
+        
+        # Elegir dos puntos de corte
+        cx_point1, cx_point2 = sorted(random.sample(range(n), 2))
+        
+        # Copiar segmento del medio
+        child1[cx_point1:cx_point2] = parent1[cx_point1:cx_point2]
+        child2[cx_point1:cx_point2] = parent2[cx_point1:cx_point2]
+        
+        # Mapear el resto para child1
+        for i in range(n):
+            if i < cx_point1 or i >= cx_point2:
+                # Intentar copiar de parent2
+                val = parent2[i]
+                while val in child1[cx_point1:cx_point2]:
+                    # Valor ya usado, buscar mapeo
+                    idx = parent2[cx_point1:cx_point2].index(val)
+                    val = parent1[cx_point1 + idx]
+                child1[i] = val
+        
+        # Mapear el resto para child2
+        for i in range(n):
+            if i < cx_point1 or i >= cx_point2:
+                val = parent1[i]
+                while val in child2[cx_point1:cx_point2]:
+                    idx = parent1[cx_point1:cx_point2].index(val)
+                    val = parent2[cx_point1 + idx]
+                child2[i] = val
+        
+        return child1, child2
+
+    def crossover_order(self, parent1, parent2):
+        """
+        Order Crossover (OX) - más simple y rápido que PMX
+        """
+        n = self.dimension
+        
+        # Elegir dos puntos de corte
+        cx_point1, cx_point2 = sorted(random.sample(range(n), 2))
+        
+        # Child 1
+        child1 = [-1] * n
+        child1[cx_point1:cx_point2] = parent1[cx_point1:cx_point2]
+        
+        # Llenar el resto con orden de parent2
+        ptr = cx_point2
+        for i in range(n):
+            idx = (cx_point2 + i) % n
+            if parent2[idx] not in child1:
+                child1[ptr % n] = parent2[idx]
+                ptr += 1
+        
+        # Child 2
+        child2 = [-1] * n
+        child2[cx_point1:cx_point2] = parent2[cx_point1:cx_point2]
+        
+        ptr = cx_point2
+        for i in range(n):
+            idx = (cx_point2 + i) % n
+            if parent1[idx] not in child2:
+                child2[ptr % n] = parent1[idx]
+                ptr += 1
+        
         return child1, child2
 
     def genetic_algorithm(self, population_size=100, generations=1000):
-        # Inicializar población
+        # Inicializar población (todas permutaciones válidas)
         population = [self.random_start() for _ in range(population_size)]
         
         # Evaluar población inicial y crear pares (individuo, fitness)
@@ -59,8 +120,6 @@ class Board:
         self.best_ever_fitness = pop_with_fitness[0][1]
         
         for gen in range(generations):
-            # Ya tenemos la población ordenada por fitness
-            
             # Actualizar mejor global
             if pop_with_fitness[0][1] < self.best_ever_fitness:
                 self.best_ever = pop_with_fitness[0][0][:]
@@ -78,15 +137,15 @@ class Board:
             
             # Generar nueva población
             while len(next_generation) < population_size:
-                if random.random() < 0.3:
-                    # Mutación
-                    parent = random.choice(population[:50])  # De los mejores 50
+                if random.random() < 0.2:
+                    # Mutación (20%)
+                    parent = random.choice(population[:50])
                     mutant = self.mutate(parent)
                     next_generation.append(mutant)
                 else:
-                    # Crossover
+                    # Crossover (80%)
                     parent1, parent2 = random.sample(population[:20], 2)
-                    child1, child2 = self.crossover(parent1, parent2)
+                    child1, child2 = self.crossover_order(parent1, parent2)
                     next_generation.append(child1)
                     if len(next_generation) < population_size:
                         next_generation.append(child2)
@@ -95,7 +154,6 @@ class Board:
             next_generation = next_generation[:population_size]
             
             # Evaluar SOLO los nuevos individuos (todos menos los 2 elites)
-            # Los elites ya tienen su fitness conocido
             pop_with_fitness = [
                 (next_generation[0], pop_with_fitness[0][1]),  # Elite 1
                 (next_generation[1], pop_with_fitness[1][1])   # Elite 2
@@ -121,7 +179,7 @@ def main():
     dim = 10
     board = Board(dimension=dim)
 
-    print("Initial board:")
+    print("Initial board (permutation):")
     board.print_board(board.queens)
     print("Initial fitness:", board.fitness(board.queens))
 

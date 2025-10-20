@@ -161,6 +161,39 @@ def _describe_action(action: Any) -> str:
     return f"{name} {details}" if details else str(name)
 
 
+def _get_action_parameter(action: Any, name: str) -> Any:
+    """Extract an action parameter regardless of attribute vs dict access."""
+    value = getattr(action, name, None)
+    if value is not None:
+        return value
+    params = getattr(action, "parameters", None)
+    if isinstance(params, dict):
+        return params.get(name)
+    return None
+
+
+def _matches_agent_status(value: Any, status: AgentStatus) -> bool:
+    """Return True when *value* represents the given AgentStatus."""
+    if value is None:
+        return False
+    try:
+        if isinstance(value, AgentStatus):
+            return value == status
+    except Exception:
+        pass
+    if isinstance(value, str):
+        stripped = value.replace("AgentStatus.", "")
+        try:
+            target = status.value  # type: ignore[attr-defined]
+        except Exception:
+            target = str(status)
+        return stripped == target
+    try:
+        return str(value) == str(status.value)  # type: ignore[attr-defined]
+    except Exception:
+        return str(value) == str(status)
+
+
 class HighLevelQAgent(BaseAgent):
     """
     A Q‑learning agent that operates on a compressed state representation and
@@ -631,11 +664,12 @@ class HighLevelQAgent(BaseAgent):
         reward = observation.reward
         end = observation.end
         info = observation.info
-        if info and info.get("end_reason") == AgentStatus.Fail:
+        end_reason = info.get("end_reason") if info else None
+        if _matches_agent_status(end_reason, AgentStatus.Fail):
             reward = -1000
-        elif info and info.get("end_reason") == AgentStatus.Success:
+        elif _matches_agent_status(end_reason, AgentStatus.Success):
             reward = 1000
-        elif info and info.get("end_reason") == AgentStatus.TimeoutReached:
+        elif _matches_agent_status(end_reason, AgentStatus.TimeoutReached):
             reward = -100
         else:
             # Small negative reward to encourage shorter trajectories
@@ -722,8 +756,8 @@ class HighLevelQAgent(BaseAgent):
             # Update exploited services if necessary
             if not testing and action_name == "ExploitService":
                 # Record exploited service by target host/service if possible
-                target_host = getattr(action, "target_host", None)
-                target_service = getattr(action, "target_service", None)
+                target_host = _get_action_parameter(action, "target_host")
+                target_service = _get_action_parameter(action, "target_service")
                 if target_host and target_service:
                     self.exploited_services.add((str(target_host), str(target_service)))
                     logger.debug(
@@ -1040,15 +1074,15 @@ def main(argv: List[str] | None = None) -> None:
             reason = info.get("end_reason")
             train_step_counts.append(steps)
             train_returns.append(total_reward)
-            if reason == AgentStatus.Success or reason == "AgentStatus.Success":
+            if _matches_agent_status(reason, AgentStatus.Success):
                 train_wins += 1
                 train_win_steps.append(steps)
                 train_win_returns.append(total_reward)
-            elif reason == AgentStatus.Fail or reason == "AgentStatus.Fail":
+            elif _matches_agent_status(reason, AgentStatus.Fail):
                 train_detected += 1
                 train_detected_steps.append(steps)
                 train_detected_returns.append(total_reward)
-            elif reason == AgentStatus.TimeoutReached or reason == "AgentStatus.TimeoutReached":
+            elif _matches_agent_status(reason, AgentStatus.TimeoutReached):
                 train_timeouts += 1
                 train_timeout_steps.append(steps)
                 train_timeout_returns.append(total_reward)
@@ -1192,15 +1226,15 @@ def main(argv: List[str] | None = None) -> None:
             test_returns.append(total_reward)
             info = getattr(final_observation, "info", {}) or {}
             reason = info.get("end_reason")
-            if reason == AgentStatus.Success or reason == "AgentStatus.Success":
+            if _matches_agent_status(reason, AgentStatus.Success):
                 test_wins += 1
                 test_win_steps.append(steps)
                 test_win_returns.append(total_reward)
-            elif reason == AgentStatus.Fail or reason == "AgentStatus.Fail":
+            elif _matches_agent_status(reason, AgentStatus.Fail):
                 test_detected += 1
                 test_detected_steps.append(steps)
                 test_detected_returns.append(total_reward)
-            elif reason == AgentStatus.TimeoutReached or reason == "AgentStatus.TimeoutReached":
+            elif _matches_agent_status(reason, AgentStatus.TimeoutReached):
                 test_timeouts += 1
                 test_timeout_steps.append(steps)
                 test_timeout_returns.append(total_reward)

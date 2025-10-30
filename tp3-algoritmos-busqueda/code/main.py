@@ -12,7 +12,7 @@ from agent_astar import AStarAgent
 from agent_random import RandomAgent
 
 # Tu función ya existente:
-def generate_large_custom_map(size=8, p_frozen=0.9, seed=None):
+def generate_random_map_custom(size=8, p_frozen=0.9, seed=None):
     """
     Genera un mapa personalizado de FrozenLake con:
     - Tamaño: size x size
@@ -50,9 +50,18 @@ if __name__ == "__main__":
     MAX_STEPS = 1000  # Vida del agente
 
     # Función de costo del escenario 2 (para evaluar costo de acciones)
+    def step_cost_s1_from_action(a: int) -> int:
+        return 1
+
     def step_cost_s2_from_action(a: int) -> int:
         # LEFT/RIGHT => 1, UP/DOWN => 10
         return 10 if a in (1, 3) else 1
+
+    def step_cost_s2_from_delta(delta: tuple[int, int]) -> int:
+        dr, dc = delta
+        if dr != 0 and dc == 0:
+            return 10
+        return 1
 
     SEEDS = [i for i in range(1, EPISODES + 1)]
 
@@ -62,7 +71,7 @@ if __name__ == "__main__":
 
     for ep_idx, seed in enumerate(SEEDS, start=1):
         # Generar mapa determinista para esta semilla
-        desc = generate_large_custom_map(size=SIZE, p_frozen=P_FROZEN, seed=seed)
+        desc = generate_random_map_custom(size=SIZE, p_frozen=P_FROZEN, seed=seed)
 
         # Imprimir entorno generado una vez (env 1)
         if ep_idx == 1:
@@ -86,8 +95,10 @@ if __name__ == "__main__":
             ("DLS50", DLSAgent(limit=50)),
             ("DLS75", DLSAgent(limit=75)),
             ("DLS100", DLSAgent(limit=100)),
-            ("UCS", UCSAgent()),
-            ("A*", AStarAgent()),
+            ("UCS_E1", UCSAgent()),
+            ("UCS_E2", UCSAgent(step_cost=step_cost_s2_from_delta)),
+            ("AStar_E1", AStarAgent()),
+            ("AStar_E2", AStarAgent(step_cost=step_cost_s2_from_delta, heuristic_weights=(10, 1))),
         ]
 
         for name, agent in agents:
@@ -97,10 +108,12 @@ if __name__ == "__main__":
 
             # Métricas
             solution_found = bool(done and reward == 1.0)
-            actions_count = steps if solution_found else -1
-            actions_cost = (
-                sum(step_cost_s2_from_action(a) for a in actions_taken) if solution_found else -1
-            )
+            if solution_found:
+                actions_count = sum(step_cost_s1_from_action(a) for a in actions_taken)
+                actions_cost = sum(step_cost_s2_from_action(a) for a in actions_taken)
+            else:
+                actions_count = -1
+                actions_cost = -1
             states_n = getattr(agent, "last_expanded", None)
             states_n = int(states_n) if (states_n is not None and solution_found) else -1
 

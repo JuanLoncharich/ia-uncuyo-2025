@@ -76,7 +76,11 @@ def main():
             })
         return pd.Series(out)
 
-    summary = df.groupby(["algorithm_name", "size"]).apply(agg).reset_index()
+    summary = (
+        df.groupby(["algorithm_name", "size"])
+        .apply(agg, include_groups=False)
+        .reset_index()
+    )
     summary = summary.sort_values(["size", "algorithm_name"]).reset_index(drop=True)
 
     os.makedirs(RESULTS_ROOT, exist_ok=True)

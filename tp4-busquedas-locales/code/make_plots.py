@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
 import os
-import pandas as pd
+import random
+from typing import Dict, Iterable, List, Sequence, Tuple
+
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+
+import n_reinas_GA as ga
+import n_reinas_HC as hc
+import n_reinas_SA as sa
+import n_reinas_random as rnd
 
 # Rutas
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -14,6 +22,88 @@ os.makedirs(IMAGES_DIR, exist_ok=True)
 
 # Colores más distintivos
 COLORS = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#6A994E']
+MAX_EVALUATIONS = {
+    4: 10_000,
+    8: 50_000,
+    10: 100_000,
+    12: 150_000,
+    15: 200_000,
+}
+DEFAULT_EVOLUTION_SIZE = 10
+SA_PARAMS = lambda n: dict(T_init=float(n), T_min=1e-3, alpha=0.98)
+GA_PARAMS = lambda n: dict(population_size=100, generations=10_000)
+ALGO_LABELS = {
+    "random": "Búsqueda Aleatoria",
+    "HC": "Hill Climbing",
+    "SA": "Simulated Annealing",
+    "GA": "Algoritmo Genético",
+}
+
+
+def _downsample_history(history: Sequence[int], max_points: int = 1500) -> Tuple[List[int], List[int]]:
+    if len(history) <= max_points:
+        x = list(range(len(history)))
+        y = list(history)
+        return x, y
+    step = max(1, len(history) // max_points)
+    indices = list(range(0, len(history), step))
+    if indices[-1] != len(history) - 1:
+        indices.append(len(history) - 1)
+    return indices, [history[i] for i in indices]
+
+
+def generate_h_evolution_plots(board_size: int = DEFAULT_EVOLUTION_SIZE) -> None:
+    """Genera gráficos H(t) para una corrida representativa de cada algoritmo."""
+    print(f"Generando evolución de H() para N={board_size} ...")
+    histories: Dict[str, List[int]] = {}
+
+    random.seed(20_25)
+    board_random = rnd.Board(dimension=board_size)
+    _, _, hist_random = rnd.random_search(
+        board_random,
+        max_evals=MAX_EVALUATIONS[board_size],
+        return_history=True,
+    )
+    histories["random"] = hist_random
+
+    random.seed(20_26)
+    board_hc = hc.Board(dimension=board_size)
+    _, hist_hc = hc.hill_climbing(board_hc, return_history=True)
+    histories["HC"] = hist_hc
+
+    random.seed(20_27)
+    board_sa = sa.Board(dimension=board_size)
+    _, _, hist_sa = sa.simulated_annealing(
+        board_sa,
+        return_history=True,
+        **SA_PARAMS(board_size),
+        max_iters=MAX_EVALUATIONS[board_size],
+    )
+    histories["SA"] = hist_sa
+
+    random.seed(20_28)
+    board_ga = ga.Board(dimension=board_size)
+    _, hist_ga = board_ga.genetic_algorithm(
+        population_size=GA_PARAMS(board_size)["population_size"],
+        generations=GA_PARAMS(board_size)["generations"],
+        return_history=True,
+    )
+    histories["GA"] = hist_ga
+
+    for name, history in histories.items():
+        if not history:
+            continue
+        xs, ys = _downsample_history(history)
+        plt.figure(figsize=(9, 5))
+        plt.plot(xs, ys, linewidth=2.0, color="#2E86AB")
+        plt.xlabel("Iteración", fontsize=12, fontweight="bold")
+        plt.ylabel("H(e)", fontsize=12, fontweight="bold")
+        plt.title(f"Evolución de H() - {ALGO_LABELS[name]} (N={board_size})", fontsize=14, fontweight="bold")
+        plt.grid(True, linestyle="--", alpha=0.3)
+        out_path = os.path.join(IMAGES_DIR, f"H_evolution_{name}.png")
+        plt.savefig(out_path, dpi=300, bbox_inches="tight")
+        plt.close()
+        print("Guardado:", out_path)
 
 def main():
     if not os.path.isfile(SUMMARY_CSV):
@@ -120,6 +210,8 @@ def main():
     plt.close()
     print("Guardado:", out4)
     
+    generate_h_evolution_plots()
+    
     # ========== NUEVOS BOXPLOTS ==========
     
     if not has_all_data:
@@ -143,7 +235,7 @@ def main():
             labels.append(algo)
             colors_list.append(COLORS[i % len(COLORS)])
         
-        bp = axes[idx].boxplot(data_by_algo, labels=labels, patch_artist=True,
+        bp = axes[idx].boxplot(data_by_algo, tick_labels=labels, patch_artist=True,
                               medianprops=dict(color='black', linewidth=2),
                               boxprops=dict(linewidth=1.5),
                               whiskerprops=dict(linewidth=1.5),
@@ -183,7 +275,7 @@ def main():
             labels.append(algo)
             colors_list.append(COLORS[i % len(COLORS)])
         
-        bp = axes[idx].boxplot(data_by_algo, labels=labels, patch_artist=True,
+        bp = axes[idx].boxplot(data_by_algo, tick_labels=labels, patch_artist=True,
                               medianprops=dict(color='black', linewidth=2),
                               boxprops=dict(linewidth=1.5),
                               whiskerprops=dict(linewidth=1.5),
@@ -222,7 +314,7 @@ def main():
             labels.append(algo)
             colors_list.append(COLORS[i % len(COLORS)])
         
-        bp = axes[idx].boxplot(data_by_algo, labels=labels, patch_artist=True,
+        bp = axes[idx].boxplot(data_by_algo, tick_labels=labels, patch_artist=True,
                               medianprops=dict(color='black', linewidth=2),
                               boxprops=dict(linewidth=1.5),
                               whiskerprops=dict(linewidth=1.5),

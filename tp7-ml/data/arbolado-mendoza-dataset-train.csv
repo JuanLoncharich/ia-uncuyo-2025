@@ -1,0 +1,10 @@
+atributo,tipo,descripcion
+seccion,integer,Numero de Seccion Administrativa a la que pertenece el Forestal
+diametro_tronco,integer,Diametro del Tronco del Forestal
+ultima_modificacion,character,Fecha de la ultima modificacion del registro
+especie,integer,Especie del Forestal del Forestal
+inclinacion_grave,integer,Clase: Inclinación grave
+circ_tronco_cm,double,Circunferencia del Tronco del Forestal
+lat,double,Latitud (Posicion Geografica)
+altura,integer,Altura del Forestal
+long,double,Longitud (Posicion Geografica)

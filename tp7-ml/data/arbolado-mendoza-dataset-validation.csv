@@ -1,0 +1,4 @@
+atributo,tipo,descripcion
+area_seccion,double,"Area de la Seccion Administrativa, en Km2"
+nombre_seccion,character,Nombre de la Seccion Administrativa 
+id,integer,Identificacion

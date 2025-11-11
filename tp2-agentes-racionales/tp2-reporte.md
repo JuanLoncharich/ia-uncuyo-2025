@@ -48,8 +48,3 @@ La tasa de suciedad magnifica las diferencias: el ReflexiveAgent escala casi lin
 - El diseño reflexivo simple es suficiente para multiplicar la eficiencia de acción por cinco sin aumentar el tiempo de simulación, lo que valida la hipótesis de que “más percepción” equivale a mejor racionalidad.
 - A tamaños grandes y alta suciedad, solo el ReflexiveAgent mantiene una tendencia positiva; el RandomAgent actúa como un límite inferior útil para medir mejoras.
 - Las acciones totales del RandomAgent crecen porque pasa mucho tiempo moviéndose sin limpiar; esto explica su menor movimiento y acción eficiencia pese a recorrer más casilleros.
-
-## Próximos pasos sugeridos
-1. Diseñar un agente basado en planificación local (ej. BFS sobre tiles sucios detectados) para explotar la estructura del entorno y comparar contra la línea base reflexiva.
-2. Introducir castigos por acciones inútiles (ej. moverse a una celda ya limpia) para reforzar la diferencia entre estrategias y acercar la métrica de performance a la eficiencia energética real.
-3. Registrar métricas de cobertura temporal (tiempo promedio en limpiar cada tile) para entender mejor la dinámica cuando `dirt_rate` es alto y la suciedad reaparece mientras el agente se desplaza.

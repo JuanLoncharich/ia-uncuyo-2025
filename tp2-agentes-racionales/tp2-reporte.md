@@ -1,13 +1,11 @@
 # TP2 – Reporte de agentes racionales en el mundo del aspirador
 
 ## Objetivos y fuentes
-El objetivo de este trabajo práctico es contrastar agentes racionales simples en el entorno `vacuum-cleaner-world`, evaluando cómo varía su desempeño frente a cambios en el tamaño del mundo y en la tasa de aparición de suciedad.  
-Toda la evidencia numérica proviene de `../vacuum-cleaner-world/experiments_2025-08-25_18-35-26.csv` (560 corridas) y de la versión consolidada en `../vacuum-cleaner-world/reports/tidy_results.csv`. Las visualizaciones fueron generadas automáticamente por `make_reports.py` y se copiaron a `./images` para acompañar este reporte.
+El objetivo de este trabajo práctico es contrastar agentes racionales simples en el entorno `vacuum-cleaner-world`, evaluando cómo varía su desempeño frente a cambios en el tamaño del mundo y en la tasa de aparición de suciedad.
 
 ## Configuración experimental
 - **Ambiente:** mundo rectangular de tamaño `size x size`, con tasas de suciedad (`dirt_rate`) en `{0.10, 0.20, 0.40, 0.80}`. Cada escenario se ejecutó con 10 semillas distintas.
 - **Agentes probados:** `RandomAgent` (elige acciones al azar) y `ReflexiveAgent` (sigue reglas basadas en la percepción inmediata del tile actual).
-- **Métricas registradas:** `performance` (puntaje acumulado), eficiencias de limpieza/movimiento/acción, cantidad de acciones totales y tiempo de simulación. Todas las corridas terminaron con `success=True`, pero el `success_rate` (acciones exitosas / acciones totales) solo alcanza 1.0 cuando el agente llega a ejecutar acciones útiles.
 
 ## Resultados cuantitativos
 ### Promedios globales por agente
@@ -16,8 +14,6 @@ Toda la evidencia numérica proviene de `../vacuum-cleaner-world/experiments_202
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | RandomAgent | 280 | 23.24 | 0.031 | 0.047 | 0.186 | 0.93 | 756.23 | 10.74 |
 | ReflexiveAgent | 280 | 56.78 | 0.099 | 0.111 | 0.929 | 0.93 | 668.52 | 10.00 |
-
-**Claves:** el ReflexiveAgent logra 2.4× más puntaje y casi 3.2× más eficiencia de limpieza que el RandomAgent, a la vez que necesita 12% menos acciones en promedio. Ambos agentes tienen un `success_rate` promedio de 0.93 porque, en mundos de 2×2, 20 de las 40 corridas por agente acumularon 0 acciones exitosas (no hubo tiempo de aspirar antes de que terminara el episodio). La eficiencia de acción del ReflexiveAgent es prácticamente cinco veces mayor.
 
 ### Impacto del tamaño del mundo
 
@@ -30,10 +26,6 @@ Toda la evidencia numérica proviene de `../vacuum-cleaner-world/experiments_202
 | 32 | 34.17 | 93.67 | 0.0342 | 0.0937 |
 | 64 | 35.75 | 100.67 | 0.0357 | 0.1007 |
 | 128 | 37.27 | 109.10 | 0.0373 | 0.1091 |
-
-Para tamaños mínimos, ambos agentes limpian casi todo porque la suciedad aparece en muy pocos casilleros; sin embargo, el ReflexiveAgent mantiene la tendencia creciente del puntaje hasta mundos de 128×128 al poder priorizar casillas sucias cercanas. El RandomAgent se estanca desde size=32: agregar más celdas no mejora sus decisiones ni su cobertura.
-
-> Nota: en `size = 2` exactamente la mitad de las corridas de cada agente registró `success_rate = 0` porque el episodio terminó sin intentar ninguna acción útil; a partir de `size ≥ 4`, todas las ejecuciones alcanzan `success_rate = 1.0`.
 
 ### Impacto de la tasa de suciedad
 
@@ -56,8 +48,3 @@ La tasa de suciedad magnifica las diferencias: el ReflexiveAgent escala casi lin
 - El diseño reflexivo simple es suficiente para multiplicar la eficiencia de acción por cinco sin aumentar el tiempo de simulación, lo que valida la hipótesis de que “más percepción” equivale a mejor racionalidad.
 - A tamaños grandes y alta suciedad, solo el ReflexiveAgent mantiene una tendencia positiva; el RandomAgent actúa como un límite inferior útil para medir mejoras.
 - Las acciones totales del RandomAgent crecen porque pasa mucho tiempo moviéndose sin limpiar; esto explica su menor movimiento y acción eficiencia pese a recorrer más casilleros.
-
-## Próximos pasos sugeridos
-1. Diseñar un agente basado en planificación local (ej. BFS sobre tiles sucios detectados) para explotar la estructura del entorno y comparar contra la línea base reflexiva.
-2. Introducir castigos por acciones inútiles (ej. moverse a una celda ya limpia) para reforzar la diferencia entre estrategias y acercar la métrica de performance a la eficiencia energética real.
-3. Registrar métricas de cobertura temporal (tiempo promedio en limpiar cada tile) para entender mejor la dinámica cuando `dirt_rate` es alto y la suciedad reaparece mientras el agente se desplaza.

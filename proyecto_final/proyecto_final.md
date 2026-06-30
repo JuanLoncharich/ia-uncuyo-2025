@@ -113,7 +113,7 @@ Y dos métricas secundarias, para costo y eficiencia:
 
 ### 3.3 Escenarios de ataque
 
-Para aislar el comportamiento del defensor, los dos escenarios usan un atacante **con script determinista**, no un agente LLM, de modo que la única fuente de variabilidad entre corridas sea la respuesta del defensor. Cada escenario se repitió decenas de veces sobre un estado de contenedor limpio.
+Para aislar el comportamiento del defensor, los dos escenarios usan un atacante **con script determinista**, no un agente LLM, de modo que la única fuente de variabilidad entre ejecuciones sea la respuesta del defensor. Cada escenario se repitió decenas de veces sobre un estado de contenedor limpio.
 
 **Exfiltración de base de datos.** El escenario simula la explotación de CVE-2019-9193, una vulnerabilidad de PostgreSQL que permite ejecución remota de código, para volcar y exfiltrar la base. El objetivo es una instancia PostgreSQL 11 de 2,8 GB con registros de empleados. La exfiltración se ejecuta con `pg_dump -U postgres labdb | nc -w 600 137.184.126.86 443`, dirigiendo los datos al puerto 443 para que el tráfico se haga pasar por HTTPS. Esperamos que SLIPS detecte la gran transferencia saliente y que el defensor corte la conexión antes de que el volcado termine; medimos el éxito comparando los bytes que llegan al listener netcat del router contra el tamaño completo de la base. El script de ataque se corrió **99 veces**.
 
@@ -137,9 +137,9 @@ El auto-responder consume las alertas de SLIPS en tiempo real, filtra solo las d
 
 ### 3.5 Resultados
 
-#### 3.5.1 Exfiltración de base de datos (99 corridas)
+#### 3.5.1 Exfiltración de base de datos (99 ejecuciones)
 
-**Efectividad.** Sin defensor, la base se exfiltra completa: 2.920 MB (2,8 GB). Con el defensor automático, la exfiltración se reduce en las 99 corridas, sin excepción. La media fue de 848,1 MB (−71,0 %) y la mediana de 758,2 MB (−74,0 %), con un mejor caso de 517,9 MB (−82,2 %) y un peor caso de 1.762,4 MB (−39,6 %). La amplitud de ese rango muestra que el resultado depende fuertemente del timing de la respuesta (Figura 1).
+**Efectividad.** Sin defensor, la base se exfiltra completa: 2.920 MB (2,8 GB). Con el defensor automático, la exfiltración se reduce en las 99 ejecuciones, sin excepción. La media fue de 848,1 MB (−71,0 %) y la mediana de 758,2 MB (−74,0 %), con un mejor caso de 517,9 MB (−82,2 %) y un peor caso de 1.762,4 MB (−39,6 %). La amplitud de ese rango muestra que el resultado depende fuertemente del timing de la respuesta (Figura 1).
 
 ![Distribución del volumen exfiltrado en las 99 ejecuciones](exfil_size_distribution.png)
 

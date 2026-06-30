@@ -1,11 +1,11 @@
-# Proyecto Final — Inteligencia Artificial
+# Proyecto Final - Inteligencia Artificial
 
 **Autores:**
 Juan Andrés Loncharich, Legajo 14534
 Diego Alejandro Forni, Legajo 14329
 
-**Repositorio:** https://github.com/JuanLoncharich/proyecto_delfin
-**Universidad Nacional de Cuyo — Licenciatura en Ciencias de la Computación**
+**Repositorio:** https://github.com/JuanLoncharich/JuanLoncharich/ia-uncuyo-2025/proyecto_final
+**Universidad Nacional de Cuyo - Licenciatura en Ciencias de la Computación**
 
 ---
 
@@ -236,7 +236,7 @@ La terminación del proceso de volcado se dio en el 67,7 % de las ejecuciones, p
 
 ### 4.1 Efectividad general del defensor
 
-El defensor redujo el volumen exfiltrado de forma consistente (71–74 %) y evitó el compromiso de credenciales en el 97 % de las ejecuciones de fuerza bruta. La arquitectura de tres capas —detección, planificación, ejecución— efectivamente interviene en ataques en curso. Pero hay un límite estructural que ningún ajuste de prompt borra: incluso en el mejor caso de exfiltración se filtraron más de 500 MB antes de que el bloqueo hiciera efecto. Detectar y ejecutar lleva tiempo, y mientras tanto el ataque avanza.
+El defensor redujo el volumen exfiltrado de forma consistente (71–74 %) y evitó el compromiso de credenciales en el 97 % de las ejecuciones de fuerza bruta. La arquitectura de tres capas, detección, planificación y ejecución efectivamente intervienen en ataques en curso. Pero hay un límite estructural que ningún ajuste de prompt borra: incluso en el mejor caso de exfiltración se filtraron más de 500 MB antes de que el bloqueo hiciera efecto. Detectar y ejecutar lleva tiempo, y mientras tanto el ataque avanza.
 
 Los dos escenarios exhiben perfiles de latencia opuestos, y eso es informativo. En exfiltración el cuello de botella es la **ejecución** (mediana de ejecución acumulada de 158,5 s, con ~125 s de latencia de ejecución pura), mientras la detección es casi instantánea (24,6 s). En fuerza bruta es al revés: la **detección** domina (163,5 s, porque SLIPS necesita acumular evidencia de fallos repetidos), y la ejecución es rápida (25 s). Optimizar el pipeline, entonces, no tiene una sola palanca: según el tipo de ataque, conviene atacar la latencia de ejecución o la de detección.
 
@@ -244,7 +244,7 @@ Los dos escenarios exhiben perfiles de latencia opuestos, y eso es informativo. 
 
 El análisis de ejecuciones individuales reveló varias categorías de respuesta inesperadas o particularmente creativas, que se apartan de los playbooks estándar de respuesta a incidentes.
 
-**Interrupción de servicios.** Muchas respuestas detuvieron servicios críticos como mecanismo de contención, con el costo de impactar operaciones legítimas. Varias ejecuciones apagaron el servicio SSH —dejando afuera a administradores legítimos—, otras detuvieron la base durante el incidente, y una llegó a parar nginx pese a no tener relación con la exfiltración de PostgreSQL. El defensor prioriza la contención sobre la disponibilidad, lo que puede ser razonable en algunos escenarios y problemático en otros.
+**Interrupción de servicios.** Muchas respuestas detuvieron servicios críticos como mecanismo de contención, con el costo de impactar operaciones legítimas. Varias ejecuciones apagaron el servicio SSH dejando afuera a administradores legítimos, otras detuvieron la base durante el incidente, y una llegó a parar nginx pese a no tener relación con la exfiltración de PostgreSQL. El defensor prioriza la contención sobre la disponibilidad, lo que puede ser razonable en algunos escenarios y problemático en otros.
 
 **Engaño.** Algunas de las respuestas más creativas pasaron por subvertir las herramientas del atacante en vez de simplemente bloquearlas. Varias ejecuciones intentaron reemplazar el binario `pg_dump`; otras desplegaron una instancia PostgreSQL señuelo con un `pg_dump` falso que devuelve tablas fabricadas, una estrategia de desinformación-como-defensa que le entrega datos basura al atacante. Además, en la mayoría de las ejecuciones se crearon honeypots, no solo para Flask y PostgreSQL sino para los servicios más comunes. Son estrategias potentes, aunque con riesgo: la base señuelo puede caerse o comportarse de forma inconsistente.
 

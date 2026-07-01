@@ -1,0 +1,358 @@
+import { useState, useMemo, useRef, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { Radio, MessageSquare, Play } from 'lucide-react';
+import { useOpenCodeStream } from '@/hooks/useOpenCodeStream';
+import { useTimelineStream } from '@/hooks/useTimelineStream';
+import { SessionStream } from '@/components/SessionStream';
+import { api } from '@/api';
+import { useReplayContext } from '@/contexts/ReplayContext';
+import type { SessionsMap, SessionMessage, TimelineEntry } from '@/types';
+
+const LEVEL_STYLES: Record<string, string> = {
+  INIT: 'text-blue-700 dark:text-blue-400',
+  OPENCODE: 'text-purple-700 dark:text-purple-400',
+  ERROR: 'text-red-700 dark:text-red-400',
+  WARNING: 'text-amber-700 dark:text-amber-400',
+  INFO: 'text-green-700 dark:text-green-400',
+  DEBUG: 'text-trident-muted',
+};
+
+function ocEntrySummary(data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null;
+  const d = data as Record<string, unknown>;
+  const type = d.type as string;
+  if (type === 'step_start' || type === 'step-start' || type === 'step_finish' || type === 'step-finish') return null; // hidden
+  const part = d.part as Record<string, unknown> | undefined;
+  if (type === 'tool_use' && part) {
+    const tool = part.tool as string | undefined;
+    const state = part.state as Record<string, unknown> | undefined;
+    const input = state?.input as Record<string, unknown> | undefined;
+    const desc = (input?.description ?? input?.command ?? input?.query ?? input?.content ?? input?.path ?? '') as string;
+    return tool ? `${tool}${desc ? ` · ${desc.replace(/\n/g, ' ').slice(0, 100)}` : ''}` : null;
+  }
+  if (type === 'text' && part) {
+    const text = part.text as string | undefined;
+    if (text) return text.replace(/\n/g, ' ').slice(0, 120);
+  }
+  return null;
+}
+
+function TimelineEntryRow({ entry }: { entry: TimelineEntry }) {
+  const [expanded, setExpanded] = useState(false);
+  const levelColor = LEVEL_STYLES[entry.level] ?? 'text-trident-muted';
+  const data = entry.data as Record<string, unknown> | undefined;
+  const ocType = data?.type as string | undefined;
+
+  // Hide step_start / step_finish rows entirely
+  if (entry.level === 'OPENCODE' && (ocType === 'step_start' || ocType === 'step-start' || ocType === 'step_finish' || ocType === 'step-finish')) {
+    return null;
+  }
+
+  const summary = entry.level === 'OPENCODE' ? ocEntrySummary(entry.data) : null;
+  const displayMsg = summary ?? (typeof entry.msg === 'string' ? entry.msg : JSON.stringify(entry.msg));
+  const levelLabel = entry.level === 'OPENCODE' && ocType ? ocType.replace(/_/g, ' ') : entry.level;
+
+  return (
+    <div
+      className="cursor-pointer border-b border-trident-border/40 px-3 py-1.5 hover:bg-black/5 dark:hover:bg-white/5"
+      onClick={() => setExpanded((e) => !e)}
+    >
+      <div className="flex items-start gap-2 text-xs">
+        <span className="w-16 flex-shrink-0 font-mono text-[10px] text-trident-muted">
+          {entry.ts.slice(11, 19)}
+        </span>
+        <span className={`w-20 flex-shrink-0 font-mono font-bold ${levelColor}`}>
+          {levelLabel}
+        </span>
+        <span className="truncate text-trident-text">{displayMsg}</span>
+      </div>
+      {expanded && entry.data && (
+        <pre className="terminal-output mt-1 max-h-40 overflow-auto text-[10px] text-trident-muted">
+          {JSON.stringify(entry.data, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+const TIMELINE_AGENTS: Array<{ key: string; label: string; desc: string; color: string; host: string }> = [
+  {
+    key: 'coder56',
+    label: 'coder56',
+    desc: 'Red-team attacker — recon, exploitation, persistence',
+    color: 'text-red-700 dark:text-red-400',
+    host: 'compromised',
+  },
+  {
+    key: 'db_admin',
+    label: 'db_admin',
+    desc: 'Benign DBA persona "John Scott" — routine DB tasks',
+    color: 'text-green-700 dark:text-green-400',
+    host: 'compromised',
+  },
+  {
+    key: 'soc_god_server',
+    label: 'soc_god · server',
+    desc: 'Autonomous defensive subsystem — threat analysis & remediation (server)',
+    color: 'text-sky-700 dark:text-sky-400',
+    host: 'server',
+  },
+  {
+    key: 'soc_god_compromised',
+    label: 'soc_god · compromised',
+    desc: 'Autonomous defensive subsystem — threat analysis & remediation (compromised)',
+    color: 'text-cyan-700 dark:text-cyan-400',
+    host: 'compromised',
+  },
+];
+
+function TimelineAgentPanel({ agentKey, label, desc, color, host, messagesBySession, sessionSources, timelineMessages, timelineStream, isReplayActive }: {
+  agentKey: string;
+  label: string;
+  desc: string;
+  color: string;
+  host: string;
+  messagesBySession: Record<string, SessionMessage[]>;
+  sessionSources: Record<string, string>;
+  timelineMessages: Record<string, SessionMessage[]>;
+  timelineStream: ReturnType<typeof useTimelineStream>;
+  isReplayActive: boolean;
+}) {
+  const { entries, connected } = timelineStream;
+  const recent = entries.slice(-200);
+  const lastEntry = recent[recent.length - 1];
+
+  // Extra messages fetched directly for sessions not in the shared stream cache
+  const [extraMessages, setExtraMessages] = useState<Record<string, SessionMessage[]>>({});
+  const fetchedRef = useRef<Set<string>>(new Set());
+
+  // Extract session_id(s) from timeline SESSION entries or OPENCODE data.sessionID
+  const sessionIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const e of entries) {
+      const d = e.data as any;
+      if (e.level === 'SESSION') {
+        const sid = d?.session_id;
+        if (typeof sid === 'string' && !ids.includes(sid)) ids.push(sid);
+      }
+      if (e.level === 'OPENCODE') {
+        const sid = d?.sessionID ?? d?.session_id;
+        if (typeof sid === 'string' && !ids.includes(sid)) ids.push(sid);
+      }
+    }
+    if (ids.length === 0) {
+      for (const [sid, source] of Object.entries(sessionSources)) {
+        if (source === agentKey && !ids.includes(sid)) ids.push(sid);
+      }
+    }
+    return ids;
+  }, [entries, sessionSources, agentKey]);
+
+  // For any session ID not in the shared messagesBySession, try the API first
+  // Skip this when replay is active to avoid fetching live data
+  useEffect(() => {
+    // Don't fetch from API when replay is active
+    if (isReplayActive) return;
+
+    for (const sid of sessionIds) {
+      if (!messagesBySession[sid] && !timelineMessages[sid] && !fetchedRef.current.has(sid)) {
+        fetchedRef.current.add(sid);
+        (api.openCodeMessages(sid) as Promise<any>)
+          .then((msgs: any) => {
+            // Only store if API actually returned messages; otherwise timeline fallback is used
+            if (Array.isArray(msgs) && msgs.length > 0) {
+              setExtraMessages((prev) => ({ ...prev, [sid]: msgs }));
+            }
+          })
+          .catch(() => {});
+      }
+    }
+  }, [sessionIds, messagesBySession, timelineMessages, isReplayActive]);
+
+  // Collect all OpenCode messages: shared stream > timeline reconstruction > API fetch
+  const ocMessages = useMemo(() => {
+    const msgs: SessionMessage[] = [];
+    for (const sid of sessionIds) {
+      const sm = messagesBySession[sid] ?? timelineMessages[sid] ?? extraMessages[sid];
+      if (sm) msgs.push(...sm);
+    }
+    return msgs;
+  }, [sessionIds, messagesBySession, timelineMessages, extraMessages]);
+
+  const msgCount = ocMessages.length;
+
+  // Default tab: show messages when we have them, otherwise timeline
+  const [tab, setTab] = useState<'messages' | 'timeline'>('timeline');
+  const switchedRef = useRef(false);
+  useEffect(() => {
+    if (msgCount > 0 && !switchedRef.current) {
+      setTab('messages');
+      switchedRef.current = true;
+    }
+  }, [msgCount]);
+
+  return (
+    <div className="card flex flex-col">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Radio size={16} className={color} />
+          <h3 className={`font-heading text-lg font-bold ${color}`}>{label}</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`badge ${connected ? 'badge-success' : 'badge-danger'}`}>
+            {connected ? 'Live' : 'Disconnected'}
+          </span>
+        </div>
+      </div>
+
+      <p className="mb-3 text-xs text-trident-muted">{desc}</p>
+
+      <div className="mb-3 grid grid-cols-3 gap-3">
+        <div className="rounded-lg bg-black/5 dark:bg-black/30 p-3 text-center">
+          <p className="text-2xl font-bold text-trident-text">{entries.length}</p>
+          <p className="text-[10px] uppercase tracking-wider text-trident-muted">Events</p>
+        </div>
+        <div className="rounded-lg bg-black/5 dark:bg-black/30 p-3 text-center">
+          <p className="text-2xl font-bold text-purple-700 dark:text-purple-400">{msgCount}</p>
+          <p className="text-[10px] uppercase tracking-wider text-trident-muted">Messages</p>
+        </div>
+        <div className="rounded-lg bg-black/5 dark:bg-black/30 p-3 text-center">
+          <p className={`truncate text-sm font-bold ${lastEntry ? LEVEL_STYLES[lastEntry.level] ?? 'text-trident-muted' : 'text-trident-muted'}`}>
+            {lastEntry?.level ?? '—'}
+          </p>
+          <p className="text-[10px] uppercase tracking-wider text-trident-muted">Last Level</p>
+        </div>
+      </div>
+
+      {/* Tab switcher */}
+      <div className="mb-2 flex gap-1 rounded-lg bg-black/20 p-1">
+        <button
+          onClick={() => setTab('messages')}
+          className={`flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+            tab === 'messages'
+              ? 'bg-trident-accent/20 text-trident-accent'
+              : 'text-trident-muted hover:text-trident-text'
+          }`}
+        >
+          <MessageSquare size={10} className="mr-1 inline" />
+          Messages ({msgCount})
+        </button>
+        <button
+          onClick={() => setTab('timeline')}
+          className={`flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+            tab === 'timeline'
+              ? 'bg-trident-accent/20 text-trident-accent'
+              : 'text-trident-muted hover:text-trident-text'
+          }`}
+        >
+          Timeline ({entries.length})
+        </button>
+      </div>
+
+      {tab === 'messages' ? (
+        msgCount === 0 ? (
+          <p className="py-4 text-center text-sm text-trident-muted">
+            {sessionIds.length === 0
+              ? 'No OpenCode session linked yet'
+              : 'Waiting for messages…'}
+          </p>
+        ) : (
+          <div className="flex-1 overflow-auto max-h-80">
+            <SessionStream messages={ocMessages} />
+          </div>
+        )
+      ) : entries.length === 0 ? (
+        <p className="py-4 text-center text-sm text-trident-muted">
+          {connected ? 'Waiting for events…' : 'No events yet'}
+        </p>
+      ) : (
+        <div className="flex-1 overflow-auto rounded-lg border border-trident-border bg-black/20 max-h-64">
+          {recent.map((e, i) => (
+            <TimelineEntryRow key={i} entry={e} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function AgentsPage() {
+  const { replay } = useReplayContext();
+
+  // Gather all timeline streams from all agents
+  const coder56Stream = useTimelineStream('coder56');
+  const dbAdminStream = useTimelineStream('db_admin');
+  const socServerStream = useTimelineStream('soc_god_server');
+  const socCompromisedStream = useTimelineStream('soc_god_compromised');
+
+  // Combine all timeline entries once for shared message reconstruction
+  const allTimelineEntries = useMemo(() => [
+    ...coder56Stream.entries,
+    ...dbAdminStream.entries,
+    ...socServerStream.entries,
+    ...socCompromisedStream.entries,
+  ], [coder56Stream.entries, dbAdminStream.entries, socServerStream.entries, socCompromisedStream.entries]);
+
+  // Hostless OpenCode stream shared across all panels
+  const openCodeStream = useOpenCodeStream(undefined, allTimelineEntries);
+  const { timelineMessages } = openCodeStream;
+
+  const streamByHost: Record<string, ReturnType<typeof useOpenCodeStream>> = {
+    compromised: openCodeStream,
+    server: openCodeStream,
+  };
+
+  const isReplayActive = openCodeStream.isReplayActive;
+
+  // Map agent key to its stream for passing to panels
+  const timelineStreamsByAgent: Record<string, ReturnType<typeof useTimelineStream>> = {
+    coder56: coder56Stream,
+    db_admin: dbAdminStream,
+    soc_god_server: socServerStream,
+    soc_god_compromised: socCompromisedStream,
+  };
+
+  return (
+    <div className="flex h-full flex-col gap-6 overflow-auto">
+      {/* ── Header with replay indicator ── */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-heading text-2xl font-bold text-trident-text">Agents</h2>
+          <p className="text-sm text-trident-muted">
+            {isReplayActive
+              ? `Replaying data from ${replay.replayId}`
+              : 'Live event timeline from auto-responder agents'
+            }
+          </p>
+        </div>
+        {isReplayActive && (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-trident-accent/20 border border-trident-accent/50">
+            <Play size={14} className="text-trident-accent" />
+            <span className="text-sm font-medium text-trident-accent">Replay Active</span>
+          </div>
+        )}
+      </div>
+
+      {/* ── Timeline agents (coder56, db_admin) ── */}
+      <div>
+        <div className="grid grid-cols-2 gap-6">
+          {TIMELINE_AGENTS.map((a) => (
+            <TimelineAgentPanel
+              key={a.key}
+              agentKey={a.key}
+              label={a.label}
+              desc={a.desc}
+              color={a.color}
+              host={a.host}
+              messagesBySession={streamByHost[a.host]?.messagesBySession ?? {}}
+              sessionSources={streamByHost[a.host]?.sessionSources ?? {}}
+              timelineMessages={timelineMessages}
+              timelineStream={timelineStreamsByAgent[a.key]}
+              isReplayActive={isReplayActive}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

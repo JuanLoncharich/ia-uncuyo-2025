@@ -1,0 +1,60 @@
+images/server/employees_data_modified.sql
+
+# Output directories and temporary files
+outputs/
+*.pcap
+*.pcapng
+.env
+configs/aracne_lab/.env
+configs/**/.env
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+!outputs/README.md
+# Configuration
+images/server/employees_data_large.sql
+
+# Experiment output and log files
+*.log
+exfil_experiment_output_*/
+flask_brute_experiment_output/
+photorec.se*
+experiments*
+
+scripts/db_admin_experiment*
+
+# Test scripts
+test_opencode_*.py
+test_opencode_*.exp
+
+# SQL backup files
+*.sql.backup
+
+# Patches directory (build artifacts)
+# images/slips_defender/patches/
+
+# External repositories
+external/
+
+# Build markers
+.*_build_marker

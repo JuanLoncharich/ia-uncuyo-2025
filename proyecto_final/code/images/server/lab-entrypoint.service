@@ -1,0 +1,16 @@
+[Unit]
+Description=Lab Entrypoint Service
+After=network.target
+
+[Service]
+Type=simple
+Environment=LOGIN_USER=admin
+Environment=LOGIN_PASSWORD=admin
+Environment=DB_USER=labuser
+Environment=DB_PASSWORD=labpass
+EnvironmentFile=-/etc/default/lab-env
+ExecStart=/entrypoint.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

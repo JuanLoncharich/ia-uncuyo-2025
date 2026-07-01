@@ -1,0 +1,99 @@
+FROM ubuntu:22.04
+
+# === BASE PACKAGES (from shared/base-packages.dockerfile) ===
+# Avoid interactive prompts and set a default timezone
+ENV DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC
+
+# --------------------------------------------------------------------
+# Install base packages with timezone configuration and common tools
+RUN apt-get update \
+    # Install tzdata first and configure it non-interactively
+    && apt-get install -y --no-install-recommends tzdata \
+    && ln -fs /usr/share/zoneinfo/$TZ /etc/localtime \
+    && dpkg-reconfigure --frontend noninteractive tzdata \
+    # Now install the rest of the toolset
+    && apt-get install -y --no-install-recommends \
+       ubuntu-standard \
+       sudo \
+       less vim nano htop \
+       man-db manpages \
+       tcpdump traceroute dnsutils \
+       ca-certificates curl iproute2 logrotate \
+       iputils-ping gettext-base ripgrep fzf git unzip openssh-server iptables ufw \
+       net-tools procps kmod systemd systemd-sysv \
+    && rm -rf /var/lib/apt/lists/*
+
+# Improve reliability for runtime apt installs done by autonomous agents.
+RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+    >/etc/apt/apt.conf.d/99retries
+
+# --------------------------------------------------------------------
+# COMPROMISED-SPECIFIC PACKAGES
+# --------------------------------------------------------------------
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       # Additional networking tools
+       nmap netcat-openbsd socat hydra sshpass \
+       # Python
+       python3 python3-pip \
+       # PostgreSQL client for remote database access
+       postgresql-client \
+       # Additional utilities
+       wget zip tar jq \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip3 install --no-cache-dir requests \
+    && useradd -m -s /bin/bash labuser \
+    && mkdir -p /var/run/sshd \
+    && ssh-keygen -A
+
+# Allow labuser passwordless sudo (used by ARACNE when elevated actions are required)
+RUN echo "labuser ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/labuser \
+    && chmod 440 /etc/sudoers.d/labuser
+
+# --------------------------------------------------------------------
+# OPENCODE INSTALLATION (from shared/opencode-install.dockerfile)
+# --------------------------------------------------------------------
+RUN curl -fsSL https://opencode.ai/install | bash
+
+# Add OpenCode to PATH
+ENV PATH="/root/.opencode/bin:${PATH}"
+
+# Create config directories
+RUN mkdir -p /root/.config/opencode \
+    && mkdir -p /root/.local/share/opencode
+
+# Copy OpenCode configuration template (envsubst fills in provider/model at start)
+COPY opencode.json.template /root/.config/opencode/opencode.json.template
+
+# Create symlink for opencode in system PATH
+RUN ln -sf /root/.opencode/bin/opencode /usr/local/bin/opencode
+
+# --------------------------------------------------------------------
+# Entrypoint setup
+# --------------------------------------------------------------------
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+COPY db_admin_opencode_client.py /opt/db_admin_opencode_client.py
+
+# Natural-completion variant: lets the agent finish on its own without a
+# time limit or forced "keep going" nudges.
+COPY db_admin_natural.py /opt/db_admin_natural.py
+
+# Ollama native-API proxy: injects bash/edit/write tool definitions and
+# forwards to Ollama's /api/chat so local models (e.g. mistral-nemo) return
+# structured tool_calls instead of emitting commands as plain text.
+COPY ollama_proxy.py /opt/ollama_proxy.py
+RUN chmod +x /opt/ollama_proxy.py
+
+EXPOSE 22
+
+# --------------------------------------------------------------------
+# Healthcheck: SSH service responding
+# --------------------------------------------------------------------
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD bash -lc "ss -ltn | grep -q ':22'"
+
+CMD ["/entrypoint.sh"]
+
+WORKDIR /home/labuser
